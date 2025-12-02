@@ -1,143 +1,115 @@
-# 📘 Machine Learning Project -- Playstore App Review Classification
+# Analisis Sentimen Review Umamusume
 
-## 🔍 Overview
+## Ringkasan
+Proyek ini melakukan **analisis sentimen** pada review game *Umamusume*. Dataset memiliki dua kolom:
 
-Proyek ini merupakan implementasi lengkap proses machine learning untuk
-melakukan **klasifikasi sentimen pada ulasan aplikasi Playstore**.
-Notebook mencakup seluruh tahap mulai dari pengambilan data (scraping),
-pembersihan data, pelabelan, eksplorasi tiga pendekatan model, hingga
-evaluasi dan perbandingan performa.
+- `content`: teks review.
+- `auto_sentiment`: label sentimen (`positive`, `neutral`, `negative`, `others`).
 
-Tujuan utama proyek ini adalah: - Mengembangkan model klasifikasi teks
-berbasis ulasan Playstore. - Menganalisis perbedaan performa dari tiga
-pendekatan utama: **Klasik**, **Deep Learning**, dan **Transfer
-Learning**. - Memberikan pipeline end-to-end yang dapat direplikasi dan
-dikembangkan lebih lanjut.
+Workflow mencakup model ML tradisional, model deep learning, XAI (LIME & SHAP), dan fine-tuning efisien parameter menggunakan LoRA.
 
-------------------------------------------------------------------------
+---
 
-## 📂 1. Scraping Data dari Playstore
+## 1. Persiapan Dataset
+- Load dataset dari `umamusume-reviews.xlsx`.
+- Buang missing value pada kolom `content` dan `auto_sentiment`.
+- Encode label sentimen menggunakan `LabelEncoder`.
+- Bagi data menjadi **train** dan **test** (80/20).
+- Tokenisasi teks:
+  - **TF-IDF** untuk Naive Bayes.
+  - **Tokenisasi & padding** untuk LSTM dan BERT.
 
-Bagian pertama notebook melakukan scraping menggunakan tools tertentu
-(misalnya API/selenium/requests). Tahap ini menghasilkan dataset mentah
-berupa: - Nama aplikasi - Rating - Review pengguna - Informasi tambahan
-yang relevan
+---
 
-Data kemudian dibersihkan untuk menghilangkan duplikasi, noise, HTML
-tags, dan karakter tidak penting lainnya.
+## 2. Model
 
-------------------------------------------------------------------------
+### 2.1 Naive Bayes (TF-IDF)
+- Menggunakan `sklearn` `MultinomialNB`.
+- Input: TF-IDF (`max_features=1000`, stop words dihapus).
+- Evaluasi pada test set untuk klasifikasi sentimen dasar.
 
-## 🏷️ 2. Labelling Dataset
+### 2.2 LSTM (Deep Learning)
+- Arsitektur: Embedding → LSTM → Dense output.
+- Loss: `sparse_categorical_crossentropy`.
+- Optimizer: Adam.
+- Tokenisasi dan padding diterapkan.
 
-Dataset kemudian diberi label berdasarkan: - Polaritas review (positif,
-negatif, netral) - Aturan tertentu (misal rating \> 3 dianggap
-positif) - Atau hasil klasifikasi awal yang kemudian direvisi manual
+### 2.3 BERT (Transformer)
+- Menggunakan `bert-base-uncased` dengan `TFBertForSequenceClassification`.
+- Tokenisasi dengan max length 100.
+- Bisa difine-tune dengan LoRA untuk adaptasi parameter efisien.
 
-Tahap ini penting karena kualitas label sangat mempengaruhi performa
-model.
+---
 
-------------------------------------------------------------------------
+## 3. Explainable AI (XAI)
 
-## 🧠 3. Pendekatan Klasik (Traditional ML)
+### 3.1 LIME
+- Memberikan penjelasan lokal per review.
+- Menyoroti **kata-kata yang berkontribusi** pada prediksi sentimen.
+- Output: bar plot kontribusi kata (merah=positif, biru=negatif).
 
-Menggunakan teknik NLP konvensional seperti: - Text preprocessing (case
-folding, stopwords, stemming/lemmatization) - Ekstraksi fitur
-menggunakan TF-IDF / Bag-of-Words - Model ML: - Logistic Regression -
-Support Vector Machine (SVM) - Naive Bayes
+### 3.2 SHAP
+- Kernel SHAP untuk Naive Bayes.
+- Deep SHAP untuk LSTM.
+- PartitionExplainer untuk BERT.
+- Menghasilkan **nilai SHAP per token/fitur**, divisualisasikan dengan bar plot.
 
-Kelebihan: - Cepat dan ringan - Mudah di-train dan dipahami
+> Catatan:
+> - SHAP untuk Naive Bayes butuh konversi sparse → dense.
+> - LSTM/BERT memori intensif untuk sequence panjang.
 
-Kekurangan: - Tidak memahami konteks dalam teks panjang - Representasi
-kata bersifat statis
+---
 
-------------------------------------------------------------------------
+## 4. Fine-Tuning Parameter-Efisien (LoRA)
+- **LoRA** memungkinkan fine-tuning model besar dengan **sedikit parameter**.
+- Target modul: `query` dan `value` di layer attention.
+- Matriks low-rank (`r=8`) diupdate, bukan seluruh model.
+- Mengurangi penggunaan memori dan mempercepat training.
+- LoRA sendiri tidak ada visualisasi; interpretasi bisa pakai **LIME/SHAP** atau plot metrik.
 
-## 🧠 4. Pendekatan Deep Learning
+```python
+from peft import LoraConfig, get_peft_model, TaskType
 
-Pada tahap ini, notebook menggunakan arsitektur neural network modern
-seperti: - Embedding Layer - LSTM / GRU / BiLSTM - Dense Layer untuk
-klasifikasi
+lora_config = LoraConfig(
+    task_type=TaskType.SEQ_CLS,
+    r=8,
+    lora_alpha=16,
+    lora_dropout=0.1,
+    target_modules=["query", "value"]
+)
 
-Kelebihan: - Mampu belajar representasi kata - Lebih baik dalam memahami
-urutan kata dan konteks lokal
-
-Kekurangan: - Training lebih lama - Membutuhkan GPU untuk performa
-optimal
-
-------------------------------------------------------------------------
-
-## 🧠 5. Pendekatan Transfer Learning
-
-Bagian ini menggunakan model pra-latih berbasis Transformer seperti: -
-BERT - IndoBERT - DistilBERT (lebih kecil dan cepat)
-
-Kelebihan: - Mampu memahami konteks kalimat secara menyeluruh - Performa
-jauh lebih baik pada tugas NLP modern - Tidak butuh dataset sangat besar
-karena telah dilatih sebelumnya
-
-Kekurangan: - Konsumsi resource lebih besar - Training membutuhkan waktu
-lebih lama
-
-------------------------------------------------------------------------
-
-## 📊 6. Evaluasi dan Perbandingan Model
-
-Notebook menampilkan: - Akurasi - Precision, recall, dan F1-score -
-Grafik training vs validation loss/accuracy - Tabel perbandingan
-performa
-
-Hasil umum: - **Transfer Learning** memberikan akurasi tertinggi -
-**Deep Learning** lebih baik dari Klasik, terutama pada data kompleks -
-**Model Klasik** menjadi baseline cepat dan efisien
-
-------------------------------------------------------------------------
-
-## 📁 Struktur Notebook
-
--   Scraping Data dari Playstore
--   Labelling Dataset
--   Pendekatan Klasik
--   Pendekatan Deep Learning
--   Pendekatan Transfer Learning
--   Perbandingan 3 Pendekatan
-
-------------------------------------------------------------------------
-
-## 🚀 Cara Menjalankan Proyek
-
-1.  Install dependensi:
-
-```{=html}
-<!-- -->
+model = get_peft_model(model, lora_config)
+model.print_trainable_parameters()
 ```
-    pip install tensorflow scikit-learn transformers pandas numpy pypandoc
 
-2.  Jalankan notebook secara berurutan.
-3.  Pastikan dataset scraping tersedia atau lakukan scraping ulang.
-4.  Jalankan sel training untuk ketiga model.
-5.  Bandingkan hasil evaluasi.
+---
 
-------------------------------------------------------------------------
+## 5. Visualisasi
+- **Bar plot** untuk kontribusi kata LIME & SHAP.
+- **Kurva training** (accuracy/loss) untuk LSTM, BERT, LoRA.
+- Warna:
+  - Kontribusi positif → Merah
+  - Kontribusi negatif → Biru
 
-## 📝 Kesimpulan
+---
 
-Proyek ini memberikan workflow lengkap dan komprehensif untuk
-klasifikasi teks berbasis review Playstore. Melalui perbandingan
-pendekatan klasik, deep learning, dan transfer learning, pengguna dapat
-memahami kekuatan masing-masing metode dan memilih model yang paling
-sesuai untuk kebutuhan produksi atau riset.
+## 6. Catatan / Tips
+- SHAP & LIME **memori-intensif**, gunakan sampel kecil untuk demo.
+- Untuk BERT / LoRA:
+  - CPU saja lambat, disarankan pakai GPU.
+  - Batasi panjang sequence (`max_length=100`) untuk cepat.
+- WandB logging **dimatikan**:
+```python
+import os
+os.environ["WANDB_MODE"] = "disabled"
+```
+- LoRA memungkinkan adaptasi cepat ke dataset baru tanpa retraining full model.
 
-------------------------------------------------------------------------
+---
 
-## 💡 Pengembangan Lanjutan
-
--   Tambahkan analisis sentimen berbasis aspek (Aspect-Based Sentiment
-    Analysis)
--   Gunakan model LLM modern seperti GPT atau LLaMA untuk zero-shot
-    classification
--   Integrasi ke aplikasi web atau API untuk deployment
-
-------------------------------------------------------------------------
-
-Created automatically from notebook content.
+## 7. Referensi
+1. Ribeiro et al., *"Why Should I Trust You?" Explaining the Predictions of Any Classifier* (LIME)
+2. Lundberg & Lee, *A Unified Approach to Interpreting Model Predictions* (SHAP)
+3. Hu et al., *LoRA: Low-Rank Adaptation of Large Language Models*
+4. Hugging Face Transformers Documentation
+5. 🤗 PEFT library: https://github.com/huggingface/peft
